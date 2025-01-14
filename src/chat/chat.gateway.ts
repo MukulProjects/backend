@@ -1,4 +1,10 @@
-import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket } from '@nestjs/websockets';
+import {
+    WebSocketGateway,
+    WebSocketServer,
+    SubscribeMessage,
+    MessageBody,
+    ConnectedSocket,
+} from '@nestjs/websockets';
 import { Injectable } from '@nestjs/common';
 import { Socket, Server } from 'socket.io';
 import { ChatService } from './chat.service';
@@ -6,69 +12,60 @@ import { ChatService } from './chat.service';
 interface SessionClient {
     socket: Socket;
     role: string;
+    sessionId: string;
 }
 
 @WebSocketGateway({
     cors: {
-      origin: [
-        'http://localhost:3001',  // Local development server
-        'http://localhost:3002',  // Local server for other clients if any
-        'https://www.kaeeraventures.shop',  // Production server
-        'https://backjust.vercel.app',  // Vercel deployment
-      ],
-      methods: ['GET', 'POST'],
-      credentials: true, // Ensure credentials are sent
+        origin: ['http://localhost:3001', 'http://localhost:3002'],
+        methods: ['GET', 'POST'],
+        credentials: true,
     },
-    transports: ['websocket', 'polling'], // Support both websocket and polling
-  })
+    transports: ['websocket', 'polling'],
+})
 @Injectable()
 export class ChatGateway {
     @WebSocketServer()
     server: Server;
 
     private activeSessions: Map<string, SessionClient[]> = new Map();
-    private sessionAIStatus: Map<string, boolean> = new Map();
-    
+
     constructor(private readonly chatService: ChatService) {}
 
+    // Handles receiving a message and broadcasting it
     @SubscribeMessage('sendMessage')
     async handleMessage(
-        @MessageBody() message: { sessionId: string; userMessage: string; sender: string },
+        @MessageBody() data: { sessionId: string, userMessage: string, sender: string },
         @ConnectedSocket() socket: Socket
     ) {
-        const { sessionId, userMessage, sender } = message;
-        const senderType = sender === 'admin' ? 'Admin' : 'User';
+        const { sessionId, userMessage, sender } = data;
+        
+        // Get AI response based on profession
+        const aiResponse = await this.chatService.getAIResponse(userMessage, 'anyother', sessionId);
 
-        if (sender === 'admin') {
-            await this.chatService.saveChat(userMessage, '', 'general', sessionId, senderType);
-            this.broadcastMessage(sessionId, sender, userMessage, '');
-            return;
-        }
-
-        let aiResponse = '';
-        if (!this.sessionAIStatus.get(sessionId)) {
-            aiResponse = await this.chatService.getAIResponse(userMessage, 'general', sessionId);
-            this.sessionAIStatus.set(sessionId, true);
-        }
-
-        await this.chatService.saveChat(userMessage, aiResponse, 'general', sessionId, senderType);
+        // Save the chat and send both user and AI messages to admin
+        await this.chatService.saveChat(userMessage, aiResponse, 'anyother', sessionId, sender);
+        
+        // Emit message to all clients (admin and users)
         this.broadcastMessage(sessionId, sender, userMessage, aiResponse);
     }
 
+    // Broadcast messages to both admin and user in the session
     private broadcastMessage(sessionId: string, sender: string, userMessage: string, aiResponse: string) {
         const clients = this.getSocketsForSession(sessionId);
         if (clients) {
-            clients.forEach(clientSocket => {
+            clients.forEach((clientSocket) => {
                 clientSocket.emit('receiveMessage', {
                     sessionId,
-                    sender,
+                    sender, // Ensure sender is either 'admin' or 'user'
                     userMessage,
-                    aiResponse: sender === 'admin' ? null : aiResponse,
+                    aiResponse: sender === 'user' ? aiResponse : null,
                 });
             });
         }
     }
 
+    // Handles user typing
     @SubscribeMessage('typing')
     handleTyping(@MessageBody() { sessionId, sender }: { sessionId: string; sender: string }) {
         const clients = this.getSocketsForSession(sessionId);
@@ -79,19 +76,22 @@ export class ChatGateway {
         }
     }
 
+    // When a socket connects, associate it with a session ID
     handleConnection(socket: Socket) {
         const { sessionId, role } = socket.handshake.query;
-    
+
         if (!sessionId || !role) {
-            console.log("Missing sessionId or role");
+            console.error('Missing sessionId or role during connection.');
             socket.disconnect();
             return;
         }
-    
+
         const sessionIdToUse = Array.isArray(sessionId) ? sessionId[0] : sessionId;
+        console.log(`Client connected with sessionId: ${sessionIdToUse}, role: ${role}`);
         this.addClientToSession(sessionIdToUse, socket, role as string);
     }
 
+    // Handle disconnect
     handleDisconnect(socket: Socket) {
         this.activeSessions.forEach((clients, sessionId) => {
             const updatedClients = clients.filter(client => client.socket.id !== socket.id);
@@ -103,13 +103,15 @@ export class ChatGateway {
         });
     }
 
+    // Add client to a session
     private addClientToSession(sessionId: string, socket: Socket, role: string) {
         if (!this.activeSessions.has(sessionId)) {
             this.activeSessions.set(sessionId, []);
         }
-        this.activeSessions.get(sessionId)?.push({ socket, role });
+        this.activeSessions.get(sessionId)?.push({ socket, role, sessionId });
     }
 
+    // Get all sockets for a given session
     private getSocketsForSession(sessionId: string): Socket[] | undefined {
         return this.activeSessions.get(sessionId)?.map(client => client.socket);
     }

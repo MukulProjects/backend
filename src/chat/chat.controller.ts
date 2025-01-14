@@ -19,6 +19,14 @@ export class ChatController {
             const aiResponse = await this.chatService.getAIResponse(userMessage, profession ?? 'general', sessionIdToUse);
             await this.chatService.saveChat(userMessage, aiResponse, profession ?? 'general', sessionIdToUse, sender);
 
+            // Emit message to the client through the WebSocket server
+            this.chatGateway.server.emit('receiveMessage', {
+                sessionId: sessionIdToUse,
+                sender,
+                userMessage,
+                aiResponse,
+            });
+
             return { aiResponse, sessionId: sessionIdToUse };
         } catch (error) {
             throw new InternalServerErrorException('Failed to process message');
