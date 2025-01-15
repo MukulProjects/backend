@@ -17,7 +17,7 @@ interface SessionClient {
 
 @WebSocketGateway({
     cors: {
-        origin: ['http://localhost:3001', 'http://localhost:3002','https://www.kaeeraventures.shop','https://adminchat.vercel.app/'],
+        origin: ['http://localhost:3001', 'http://localhost:3002','https://www.kaeeraventures.shop','https://adminchat.vercel.app'],
         methods: ['GET', 'POST'],
         credentials: true,
     },
