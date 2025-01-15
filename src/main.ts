@@ -9,7 +9,7 @@ async function bootstrap() {
       'http://localhost:3001', 
       'http://localhost:3002', 
       'https://www.kaeeraventures.shop',
-      'https://backjust.vercel.app',  // Add your Vercel app URL
+      'https://backjust.vercel.app', 
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
