@@ -10,6 +10,7 @@ async function bootstrap() {
       'http://localhost:3002', 
       'https://www.kaeeraventures.shop',
       'https://backjust.vercel.app', 
+      'https://adminchat.vercel.app'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
